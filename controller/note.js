@@ -1,5 +1,5 @@
-const Note = require("./note");
-const User = require("./user");
+const { redisClient } = require("../config/database");
+const { User, Note } = require("../models/UserNoteAssociation");
 
 exports.createNote = async (req, res) => {
   try {
@@ -15,6 +15,7 @@ exports.createNote = async (req, res) => {
     const note = await user.createNote({
       title,
       content,
+      user_id: userId,
     });
 
     res.status(201).send(note);
@@ -25,13 +26,18 @@ exports.createNote = async (req, res) => {
 
 exports.getAllNotesForUser = async (req, res) => {
   try {
-    const userId = req.params.userId; // Assuming you're passing the user's ID in URL
+    const userId = req.params.userId;
 
-    const notes = await Note.findAll({
-      where: { user_id: userId },
+    redisClient.get(`notes:${userId}`, async (error, cachedData) => {
+      if (cachedData) {
+        const notes = JSON.parse(cachedData);
+        res.json(notes);
+      } else {
+        const notes = await Note.findAll({ where: { UserId: userId } });
+        redisClient.set(`notes:${userId}`, JSON.stringify(notes));
+        res.json(notes);
+      }
     });
-
-    res.send(notes);
   } catch (error) {
     res.status(500).send({ message: "Error fetching the notes", error });
   }
